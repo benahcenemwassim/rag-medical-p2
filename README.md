@@ -1,4 +1,4 @@
-# RAG Medical — P2
+# RAG Medical P2
 
 ## 1. Project name and description
 ## 2. Group members and roles
