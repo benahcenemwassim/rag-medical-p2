@@ -1,0 +1,1 @@
+"""Single source of truth for paths and constants. Nothing else hard-codes a path or a number."""
