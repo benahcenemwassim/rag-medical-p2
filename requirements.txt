@@ -1,6 +1,8 @@
-requests>=2.32.0
-pypdf>=5.0.0
-transformers>=4.45.0
-torch>=2.4.0
-numpy>=1.26.0
-tqdm>=4.66.0
+requests==2.34.2
+pypdf==7.1.1
+transformers==5.23.0
+torch==2.14.1
+numpy==2.5.4
+tqdm==4.70.1
+chromadb==1.5.9
+sentence-transformers==6.3.0
