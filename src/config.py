@@ -53,3 +53,16 @@ COLLECTION = "medical"
 # --------------------------------------------------
 
 TOP_K = 5
+
+#--------------------------------------------------
+# LLM configuration
+#--------------------------------------------------
+DEFAULT_LLM = "llama3"
+LLM_TEMPERATURE = 0
+LLM_SEED = 42
+LLM_NUM_CTX = 4096          # explicit: Ollama's default silently truncates the prompt
+LLM_TIMEOUT_S = 120
+OPENAI_MAX_RETRIES = 2
+
+DISCLAIMER = "This is not medical advice. Consult a healthcare professional."
+REFUSAL_SENTENCE = "I cannot answer this question from the provided documents."
