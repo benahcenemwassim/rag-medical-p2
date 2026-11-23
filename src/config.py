@@ -39,3 +39,17 @@ MIN_PAGE_TOKENS = 1
 
 # Maximum allowed number of chunks for this project
 MAX_CHUNKS = 4500
+
+
+# --------------------------------------------------
+# Vector store (Chroma)
+# --------------------------------------------------
+
+CHROMA_DIR = PROJECT_ROOT / "07_EXTRA" / "chroma_db"
+COLLECTION = "medical"
+
+# --------------------------------------------------
+# Retrieval
+# --------------------------------------------------
+
+TOP_K = 5
