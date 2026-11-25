@@ -1,3 +1,16 @@
+"""Answer a medical question from retrieved chunks (contract C5).
+
+Builds the Listing-23 prompt from the chunks, calls the language model (Ollama
+for local models, the OpenAI API for ``gpt-*`` models), verifies in code that
+every citation points to a chunk that was really given to the model, and appends
+the medical disclaimer. The model's own output is never trusted for any of these.
+
+Also provides ``generate_plain`` for baseline B0 (no context, no citations).
+
+Command line (test helper, from 03_CODE/):
+    python src/generate.py "question" --chunks some_chunks.jsonl [--model llama3]
+    python src/generate.py "question" --plain
+"""
 
 from __future__ import annotations
 
@@ -25,9 +38,11 @@ Answer (with citations):"""
 
 PLAIN_PROMPT = "Answer the following medical question concisely"
 
-# Matches [file.pdf p.N], [file.pdf, p. N], (file.pdf p.N) and (file.pdf, p. N).
+# A citation is a PDF file name followed, within a few characters, by a page
+# marker and a number. This accepts the variants models actually write:
+#   [DOC002.pdf p.17]   (DOC002.pdf, p. 17, section 3.2)   Source: DOC002.pdf, page 17
 _CITATION = re.compile(
-    r"[\[(]\s*([\w\-.]+\.pdf)\s*,?\s*p\.?\s*(\d+)\s*[\])]", re.IGNORECASE
+    r"([\w\-.]+\.pdf)\W{0,3}(?:pp?|pages?)\.?\s*(\d+)", re.IGNORECASE
 )
 
 
@@ -62,23 +77,27 @@ def _strip_disclaimer(text: str) -> str:
 
 
 def _is_refusal(answer: str) -> bool:
-    """True when the answer is exactly the refusal sentence (quotes tolerated)."""
-    return _strip_disclaimer(answer).strip(" \t\r\n\"'") == config.REFUSAL_SENTENCE
+    """True when the answer contains the refusal sentence and cites nothing."""
+    text = _strip_disclaimer(answer)
+    return config.REFUSAL_SENTENCE in text and not _CITATION.search(text)
 
 
 def check_citations(answer: str, chunks: list[dict[str, Any]]) -> bool:
     """Verify every citation of ``answer`` against the chunks given to the model.
 
-    Returns True only if (1) at least one citation is found, unless the answer
-    is the exact refusal sentence (then there must be zero citations), and
-    (2) every cited (file, page) pair exists in ``chunks``.
+    A refusal (refusal sentence, no citation) is valid. Any other answer is valid
+    only if it contains at least one citation and every cited (file, page) pair
+    exists in ``chunks``. File names are compared case-insensitively.
+
+    This checks that the cited pages were retrieved, not that the claim is
+    actually supported by them (that is what the RAGAS faithfulness metric is for).
     """
-    found = [(m.group(1), int(m.group(2))) for m in _CITATION.finditer(answer)]
     if _is_refusal(answer):
-        return not found
+        return True
+    found = [(m.group(1).lower(), int(m.group(2))) for m in _CITATION.finditer(answer)]
     if not found:
         return False
-    allowed = {(chunk["source"], int(chunk["page"])) for chunk in chunks}
+    allowed = {(chunk["source"].lower(), int(chunk["page"])) for chunk in chunks}
     return all(pair in allowed for pair in found)
 
 
@@ -91,7 +110,7 @@ def _call_ollama(prompt: str, model: str) -> str:
     import ollama
 
     start_hint = (
-        f"Cannot reach Ollama. Start it (open the Ollama app or run 'ollama serve') "
+        "Cannot reach Ollama. Start it (open the Ollama app or run 'ollama serve') "
         f"and make sure the model is available: 'ollama pull {model}'."
     )
     try:
@@ -103,9 +122,9 @@ def _call_ollama(prompt: str, model: str) -> str:
                 "temperature": config.LLM_TEMPERATURE,
                 "seed": config.LLM_SEED,
                 "num_ctx": config.LLM_NUM_CTX,
+                "num_predict": config.LLM_NUM_PREDICT,
             },
         )
-        return response["message"]["content"]
     except ollama.ResponseError as error:
         if getattr(error, "status_code", None) == 404:
             raise RuntimeError(
@@ -118,6 +137,16 @@ def _call_ollama(prompt: str, model: str) -> str:
         ) from None
     except (ConnectionError, httpx.TransportError):
         raise RuntimeError(start_hint) from None
+
+    # Ollama silently drops the START of a prompt that does not fit the context.
+    used = getattr(response, "prompt_eval_count", None)
+    if used is not None and used >= config.LLM_NUM_CTX - 256:
+        print(
+            f"WARNING: prompt used {used} of {config.LLM_NUM_CTX} tokens; "
+            "the context may have been truncated.",
+            file=sys.stderr,
+        )
+    return response["message"]["content"]
 
 
 def _call_openai(prompt: str, model: str) -> str:
@@ -141,6 +170,7 @@ def _call_openai(prompt: str, model: str) -> str:
             messages=[{"role": "user", "content": prompt}],
             temperature=config.LLM_TEMPERATURE,
             seed=config.LLM_SEED,
+            max_tokens=config.LLM_NUM_PREDICT,
         )
         return response.choices[0].message.content or ""
     except openai.OpenAIError as error:
@@ -201,7 +231,9 @@ def main() -> None:
     )
     parser.add_argument("question", help="the medical question to answer")
     parser.add_argument("--chunks", type=Path, help="JSON-lines file of retrieved chunks")
-    parser.add_argument("--model", default=config.DEFAULT_LLM, help="llama3, llama3.2:3b, gpt-4o-mini...")
+    parser.add_argument(
+        "--model", default=config.DEFAULT_LLM, help="llama3, llama3.2:3b, gpt-4o-mini..."
+    )
     parser.add_argument("--plain", action="store_true", help="baseline B0: no context, no citations")
     arguments = parser.parse_args()
 
@@ -210,8 +242,10 @@ def main() -> None:
 
     try:
         if arguments.plain:
-            result: Any = {"answer": generate_plain(arguments.question, arguments.model),
-                           "model": arguments.model}
+            result: Any = {
+                "answer": generate_plain(arguments.question, arguments.model),
+                "model": arguments.model,
+            }
         else:
             if arguments.chunks is None:
                 parser.error("--chunks is required unless --plain is used")
