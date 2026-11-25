@@ -8,3 +8,5 @@ chromadb==1.5.9
 sentence-transformers==6.3.0
 httpx==0.28.1
 ollama==0.6.3
+ollama
+openai
