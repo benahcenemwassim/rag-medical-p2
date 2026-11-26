@@ -24,17 +24,26 @@ from typing import Any
 
 import config
 
-PROMPT_TEMPLATE = """You are a medical assistant. Answer ONLY using the context below.
-For every claim, cite the source (document, page, section).
-If the context does not contain the answer, say:
-"I cannot answer this question from the provided documents."
+PROMPT_TEMPLATE = """You are a strict medical question-answering assistant.
+Answer the user's question using ONLY the retrieved context below.
 
-Context:
+RULES:
+1. Cite every factual claim using EXACTLY this format: [DOC001.pdf p.12]
+2. NEVER use academic reference numbers found in the text (such as [1] or [12]).
+3. If the context does not contain the answer, output EXACTLY: "I cannot answer this question from the provided documents."
+4. If only part of the question can be answered, explain what is known and what is missing.
+
+EXAMPLES OF CORRECT BEHAVIOR:
+- Answer: "The target blood glucose is <7 mmol/L [DOC001.pdf p.10]."
+- Refusal: "I cannot answer this question from the provided documents."
+
+RETRIEVED CONTEXT:
 {context}
 
-Question: {question}
+USER QUESTION:
+{question}
 
-Answer (with citations):"""
+Answer:"""
 
 PLAIN_PROMPT = "Answer the following medical question concisely"
 
